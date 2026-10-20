@@ -1,5 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "agentize-bridge"
 version = "0.1.0"
+description = "一个轻量级框架，用于通过 HTTP、CLI 和 MCP 暴露现有的 Python 应用程序命令。"
+readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "fastapi>=0.143.2",
+    "mcp>=2.3.0",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+agentize-bridge = "agentize_bridge.adapters.cli:main"
+agentize-bridge-mcp = "agentize_bridge.adapters.mcp_server:main"
+
+[dependency-groups]
+dev = [
+    "build>=1.6.1",
+]
+test = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
