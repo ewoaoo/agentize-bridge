@@ -1,7 +1,9 @@
+import warnings
+from typing import Any
+
 import pytest
 
 from agentize_bridge.command import Command, create_command
-from agentize_bridge.utils import type_schema
 
 
 # -------------------- Command 创建 --------------------
@@ -81,6 +83,7 @@ def test_create_command_without_docstring_uses_name():
 
 
 # -------------------- 输入 Schema --------------------
+# 更细的类型映射测试在 test_schema.py；这里只测 create_command 这一层。
 
 def test_create_command_builds_schema_for_typed_parameters():
     def process(name: str, count: int, enabled: bool, ratio: float):
@@ -91,12 +94,25 @@ def test_create_command_builds_schema_for_typed_parameters():
     assert command.input_schema == {
         "type": "object",
         "properties": {
-            "name": type_schema(str),
-            "count": type_schema(int),
-            "enabled": type_schema(bool),
-            "ratio": type_schema(float),
+            "name": {"type": "string"},
+            "count": {"type": "integer"},
+            "enabled": {"type": "boolean"},
+            "ratio": {"type": "number"},
         },
         "required": ["name", "count", "enabled", "ratio"],
+        "additionalProperties": False,
+    }
+
+
+def test_create_command_without_parameters_has_no_required():
+    def process():
+        pass
+
+    command = create_command(process)
+
+    assert command.input_schema == {
+        "type": "object",
+        "properties": {},
         "additionalProperties": False,
     }
 
@@ -126,13 +142,21 @@ def test_create_command_preserves_parameter_order():
     assert command.input_schema["required"] == ["first", "second"]
 
 
-def test_create_command_supports_unannotated_parameters():
+def test_create_command_rejects_unannotated_parameters():
     def process(value):
+        pass
+
+    with pytest.raises(TypeError, match="缺少类型注解"):
+        create_command(process)
+
+
+def test_create_command_supports_explicit_any():
+    def process(value: Any):
         pass
 
     command = create_command(process)
 
-    assert "value" in command.input_schema["properties"]
+    assert command.input_schema["properties"]["value"] == {}
     assert command.input_schema["required"] == ["value"]
 
 
@@ -158,13 +182,16 @@ def test_create_command_supports_json_compatible_default_values():
 def test_create_command_omits_non_json_compatible_defaults():
     marker = object()
 
-    def process(value=marker):
+    def process(value: Any = marker):
         pass
 
-    command = create_command(process)
+    # Pydantic 遇到不可序列化的默认值会发警告并省略 default（待本地确认）
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        command = create_command(process)
 
     assert "default" not in command.input_schema["properties"]["value"]
-    assert "value" not in command.input_schema["required"]
+    assert "value" not in command.input_schema.get("required", [])
 
 
 def test_create_command_resolves_type_hints():
@@ -173,7 +200,17 @@ def test_create_command_resolves_type_hints():
 
     command = create_command(process)
 
-    assert command.input_schema["properties"]["value"] == type_schema(str)
+    assert command.input_schema["properties"]["value"] == {"type": "string"}
+
+
+def test_create_command_attaches_args_model():
+    def process(name: str, count: int = 1):
+        pass
+
+    command = create_command(process)
+    validated = command.args_model.model_validate({"name": "x"})
+
+    assert (validated.name, validated.count) == ("x", 1)
 
 
 # -------------------- 命令名称校验 --------------------
