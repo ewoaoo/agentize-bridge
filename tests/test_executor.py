@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 import pytest
 
@@ -74,7 +75,7 @@ def test_execute_preserves_return_value_type(executor):
     ],
 )
 def test_execute_rejects_non_mapping_arguments(executor, arguments):
-    def process(value):
+    def process(value: Any):
         return value
 
     command = create_command(process)
@@ -89,7 +90,7 @@ def test_execute_rejects_missing_required_argument(executor):
 
     command = create_command(process)
 
-    with pytest.raises(CommandArgumentsError, match="missing a required argument"):
+    with pytest.raises(CommandArgumentsError, match="Field required"):
         executor.execute(command, {"name": "Alice"})
 
 
@@ -99,7 +100,7 @@ def test_execute_rejects_unexpected_argument(executor):
 
     command = create_command(process)
 
-    with pytest.raises(CommandArgumentsError, match="unexpected keyword argument"):
+    with pytest.raises(CommandArgumentsError, match="Extra inputs are not permitted"):
         executor.execute(command, {"name": "Alice", "age": 18})
 
 
@@ -109,7 +110,7 @@ def test_execute_rejects_extra_keyword_argument(executor):
 
     command = create_command(process)
 
-    with pytest.raises(CommandArgumentsError, match="unexpected keyword argument"):
+    with pytest.raises(CommandArgumentsError, match="Extra inputs are not permitted"):
         executor.execute(command, {"name": "Alice", "extra": "value"})
 
 

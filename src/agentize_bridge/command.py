@@ -2,9 +2,11 @@ import inspect
 import json
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Callable, Any, get_type_hints, Literal
+from typing import Callable, Any, Literal
 
-from .utils import type_schema
+from pydantic import BaseModel
+
+from .schema import build_args_model, input_schema
 
 ThreadMode = Literal["main", "worker"]
 
@@ -17,6 +19,7 @@ class Command:
     input_schema: dict[str, Any]
     thread: ThreadMode  # "main": 只能在主线程执行; "worker": 可以在工作线程上执行
     timeout: float | None
+    args_model: type[BaseModel]  # 同一个模型：既生成 schema，也用来校验参数
 
 
 @dataclass(slots=True)
@@ -41,33 +44,7 @@ def create_command(
     if inspect.iscoroutinefunction(fn) and thread == "main":
         raise TypeError("异步命令不能使用 thread='main'；请使用 thread='worker'，以便协程可以在工作线程上运行")
 
-    signature = inspect.signature(fn)
-    try:
-        hints = get_type_hints(fn)
-    except (NameError, TypeError):
-        hints = getattr(fn, "__annotations__", {})
-
-    properties: dict[str, Any] = {}
-    required: list[str] = []
-    for param in signature.parameters.values():
-        if param.kind in (param.POSITIONAL_ONLY, param.VAR_POSITIONAL, param.VAR_KEYWORD):
-            raise TypeError(f"指令参数 {param.name!r} 必须是一个具名关键字参数; 仅位置参数和 *args/**kwargs 不被支持")
-
-        annotation = hints.get(param.name, param.annotation)
-        property_schema = type_schema(annotation)
-        if param.default is not inspect.Signature.empty:
-            if _json_compatible(param.default):
-                property_schema["default"] = param.default
-        else:
-            required.append(param.name)
-        properties[param.name] = property_schema
-
-    schema = {
-        "type": "object",
-        "properties": properties,
-        "required": required,
-        "additionalProperties": False,
-    }
+    args_model = build_args_model(fn)
 
     doc = inspect.getdoc(fn) or ""
     resolved_name = name or fn.__name__
@@ -77,15 +54,8 @@ def create_command(
         name=resolved_name,
         fn=fn,
         description=description or doc.splitlines()[0] if (description or doc) else resolved_name,
-        input_schema=schema,
+        input_schema=input_schema(args_model),
         thread=thread,
-        timeout=timeout
+        timeout=timeout,
+        args_model=args_model
     )
-
-
-def _json_compatible(value: Any) -> bool:
-    try:
-        json.dumps(value)
-        return True
-    except (TypeError, ValueError):
-        return False

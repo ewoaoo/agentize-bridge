@@ -6,6 +6,7 @@ import time
 import pytest
 import uvicorn
 
+from mcp import Client
 from agentize_bridge.server import AgentizeServer
 from agentize_bridge.adapters.http_client import HttpClient
 from agentize_bridge.adapters.cli import run_cli
@@ -127,22 +128,16 @@ def test_mcp_tool_end_to_end(running_server):
     _, base_url = running_server
 
     async def run_test():
-        client = HttpClient(base_url)
+        client = HttpClient(base_url, timeout=5)
         commands = await asyncio.to_thread(client.get, "/commands")
+        server = mcp_adapter._create_server(client, commands, timeout=5)
 
-        add_command = next(
-            command for command in commands
-            if command["name"] == "add"
-        )
+        async with Client(server) as mcp_client:
+            result = await mcp_client.call_tool("add", {"a": 7, "b": 8})
+            assert json.loads(result.content[0].text) == 15
 
-        tool = mcp_adapter._create_tool(
-            client,
-            add_command,
-            timeout=5,
-        )
-
-        result = await tool.fn(a=7, b=8)
-
-        assert json.loads(result) == 15
+            bad = await mcp_client.call_tool("add", {"a": "x", "b": 1})
+            assert bad.is_error is True
+            assert "422" in bad.content[0].text
 
     asyncio.run(run_test())

@@ -2,6 +2,8 @@ import asyncio
 import inspect
 from typing import Any, Mapping
 
+from pydantic import ValidationError
+
 from .command import Command
 
 
@@ -23,12 +25,15 @@ class CommandExecutor:
             raise CommandArgumentsError("指令参数必须是一个 JSON 对象")
 
         try:
-            inspect.signature(command.fn).bind(**arguments)
-        except TypeError as exc:
-            raise CommandArgumentsError(str(exc)) from exc
+            validated = command.args_model.model_validate(dict(arguments))
+        except ValidationError as exc:
+            summary = "; ".join(f"{'.'.join(map(str, e['loc'])) or '<root>'}: {e['msg']}" for e in exc.errors())
+            raise CommandArgumentsError(f"参数无效: {summary}") from exc
+        # getattr 而不是 model_dump()：保留嵌套模型 / dataclass 实例
+        kwargs = {name: getattr(validated, name) for name in type(validated).model_fields}
 
         try:
-            result = command.fn(**arguments)
+            result = command.fn(**kwargs)
             if inspect.isawaitable(result):
                 result = asyncio.run(result)
             return result
