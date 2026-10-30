@@ -1,11 +1,11 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
-from threading import get_ident
+from threading import Event, Thread, get_ident
 
 import pytest
 from fastapi.testclient import TestClient
 
-from agentize_bridge.server import AgentizeServer
+from agentize_bridge.server import AgentizeServer, ServerClosedError
 from agentize_bridge.executor import (
     CommandExecutionError,
     CommandNotFoundError,
@@ -333,8 +333,94 @@ def test_dispatch_rejects_calls_after_close():
     server = AgentizeServer()
     server.close()
 
-    with pytest.raises(RuntimeError, match="已经关闭"):
+    with pytest.raises(ServerClosedError, match="已经关闭"):
         server._dispatch("missing", {})
+
+
+def test_run_pending_returns_zero_after_close():
+    server = AgentizeServer()
+    server.close()
+
+    assert server.run_pending() == 0
+
+
+def test_run_pending_does_not_consume_requests_after_close(server):
+    @server.command()
+    def task():
+        return "done"
+
+    future = server._queue.submit("task", {})
+    server.close()
+
+    assert server.run_pending() == 0
+    with pytest.raises(ServerClosedError, match="已关闭"):
+        future.result(timeout=1)
+
+
+def test_close_fails_queued_main_request(server):
+    @server.command(thread="main")
+    def task():
+        return "done"
+
+    future = server._queue.submit("task", {})
+    server.close()
+
+    with pytest.raises(ServerClosedError, match="已关闭"):
+        future.result(timeout=1)
+
+
+def test_http_returns_503_after_close(server, client):
+    @server.command(thread="worker")
+    def ping():
+        return "pong"
+
+    server.close()
+
+    response = client.post("/command/ping", json={})
+
+    assert response.status_code == 503
+    assert "关闭" in response.json()["detail"]
+
+
+def test_close_during_in_flight_dispatch_does_not_hang(server, monkeypatch):
+    @server.command(thread="main")
+    def task():
+        return "done"
+
+    entered = Event()
+    release = Event()
+    original_submit = server._queue.submit
+
+    def slow_submit(name, arguments):
+        entered.set()
+        assert release.wait(2)
+        return original_submit(name, arguments)
+
+    monkeypatch.setattr(server._queue, "submit", slow_submit)
+
+    errors = []
+
+    def dispatch():
+        try:
+            server._dispatch("task", {}, timeout=2)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    caller = Thread(target=dispatch)
+    caller.start()
+    assert entered.wait(1)
+
+    closer = Thread(target=server.close)
+    closer.start()
+    release.set()
+
+    caller.join(timeout=2)
+    closer.join(timeout=2)
+
+    assert not caller.is_alive()
+    assert not closer.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], ServerClosedError)
 
 
 def test_close_is_idempotent(server):
