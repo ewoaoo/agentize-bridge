@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from agentize_bridge.command import Command, create_command
+from agentize_bridge.command import Command, DEFAULT_TIMEOUT, create_command
 
 
 # -------------------- Command 创建 --------------------
@@ -20,7 +20,7 @@ def test_create_command_with_defaults():
     assert command.fn is greet
     assert command.description == "Greet someone."
     assert command.thread == "worker"
-    assert command.timeout is None
+    assert command.timeout == DEFAULT_TIMEOUT
 
 
 def test_create_command_with_custom_options():

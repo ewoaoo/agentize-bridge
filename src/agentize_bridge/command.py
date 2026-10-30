@@ -1,5 +1,6 @@
 import inspect
 import json
+import math
 from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import Callable, Any, Literal
@@ -10,6 +11,8 @@ from .schema import build_args_model, input_schema
 
 ThreadMode = Literal["main", "worker"]
 
+DEFAULT_TIMEOUT: float = 30.0
+
 
 @dataclass(frozen=True)
 class Command:
@@ -18,7 +21,7 @@ class Command:
     description: str
     input_schema: dict[str, Any]
     thread: ThreadMode  # "main": 只能在主线程执行; "worker": 可以在工作线程上执行
-    timeout: float | None
+    timeout: float
     args_model: type[BaseModel]  # 同一个模型：既生成 schema，也用来校验参数
 
 
@@ -35,10 +38,12 @@ def create_command(
         name: str = "",
         description: str = "",
         thread: ThreadMode = "worker",
-        timeout: float | None = None
+        timeout: float = DEFAULT_TIMEOUT
 ):
     if thread not in ("main", "worker"):
         raise ValueError("线程必须是 'main' 或 'worker' 其中之一")
+    if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout 必须是大于 0 的有点数字")
     if not callable(fn):
         raise TypeError("命令必须是可调用的")
     if inspect.iscoroutinefunction(fn) and thread == "main":
