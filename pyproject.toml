@@ -7,6 +7,9 @@ name = "agentize-bridge"
 version = "0.1.0"
 description = "一个轻量级框架，用于通过 HTTP、CLI 和 MCP 暴露现有的 Python 应用程序命令。"
 readme = "README.md"
+authors = [{ name = "ewoaoo" }]
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.162.0",
@@ -29,5 +32,9 @@ test = [
     "jsonschema>=4.20.0"
 ]
 
+[tool.uv]
+default-groups = "all"
+
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["agentize_bridge*"]
