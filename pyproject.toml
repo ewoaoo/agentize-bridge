@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentize-bridge"
-version = "0.1.0"
+version = "0.1.1"
 description = "一个轻量级框架，用于通过 HTTP、CLI 和 MCP 暴露现有的 Python 应用程序命令。"
 readme = "README.md"
 authors = [{ name = "ewoaoo" }]
