@@ -169,6 +169,7 @@ def test_call_command_encodes_command_name(monkeypatch):
 
     def fake_urlopen(request, timeout):
         captured["request"] = request
+        captured["timeout"] = timeout
         return FakeResponse(b'{"result": "ok"}')
 
     monkeypatch.setattr(
@@ -177,22 +178,24 @@ def test_call_command_encodes_command_name(monkeypatch):
     )
 
     client = HttpClient("http://localhost:8765")
-    result = client.call_command("image/process", {"threshold": 0.5})
+    result = client.call_command("image/process", {"threshold": 0.5}, timeout=5)
 
     assert result == {"result": "ok"}
     assert captured["request"].full_url == (
-        "http://localhost:8765/command/image%2Fprocess"
+        "http://localhost:8765/command/image%2Fprocess?timeout=5"
     )
     assert json.loads(captured["request"].data.decode("utf-8")) == {
         "threshold": 0.5
     }
 
 
-def test_call_command_passes_timeout(monkeypatch):
+def test_call_command_passes_timeout_and_adds_margin_to_socket(monkeypatch):
+    """timeout 原样进 query（服务端执行上限），socket 超时是 timeout + margin。"""
     captured = {}
 
     def fake_urlopen(request, timeout):
         captured["request"] = request
+        captured["timeout"] = timeout
         return FakeResponse(b'{"result": "ok"}')
 
     monkeypatch.setattr(
@@ -200,19 +203,30 @@ def test_call_command_passes_timeout(monkeypatch):
         fake_urlopen,
     )
 
-    client = HttpClient("http://localhost:8765")
+    client = HttpClient("http://localhost:8765", margin=5)
     client.call_command("process", {"value": 1}, timeout=5)
 
     assert captured["request"].full_url == (
         "http://localhost:8765/command/process?timeout=5"
     )
+    assert captured["timeout"] == 10
 
 
-def test_call_command_omits_timeout_when_none(monkeypatch):
+def test_call_command_requires_timeout():
+    """timeout 是必传参数——不允许 None 路径。"""
+    client = HttpClient("http://localhost:8765")
+
+    with pytest.raises(TypeError):
+        client.call_command("process", {})
+
+
+def test_call_command_margin_only_affects_socket_not_query(monkeypatch):
+    """margin 只进 socket，不进 query——否则服务端会真的多跑 margin 秒。"""
     captured = {}
 
     def fake_urlopen(request, timeout):
         captured["request"] = request
+        captured["timeout"] = timeout
         return FakeResponse(b'{"result": "ok"}')
 
     monkeypatch.setattr(
@@ -220,9 +234,27 @@ def test_call_command_omits_timeout_when_none(monkeypatch):
         fake_urlopen,
     )
 
-    client = HttpClient("http://localhost:8765")
-    client.call_command("process", {})
+    client = HttpClient("http://localhost:8765", margin=2.5)
+    client.call_command("process", {}, timeout=10)
 
-    assert captured["request"].full_url == (
-        "http://localhost:8765/command/process"
+    assert "?timeout=10" in captured["request"].full_url
+    assert "timeout=12.5" not in captured["request"].full_url
+    assert captured["timeout"] == 12.5
+
+
+def test_call_command_uses_configurable_margin(monkeypatch):
+    """margin 是构造参数，不是硬编码的 5。"""
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        captured["timeout"] = timeout
+        return FakeResponse(b'{"result": "ok"}')
+
+    monkeypatch.setattr(
+        "agentize_bridge.adapters.http_client.urlopen",
+        fake_urlopen,
     )
+
+    HttpClient("http://localhost:8765", margin=1).call_command("p", {}, timeout=3)
+
+    assert captured["timeout"] == 4
