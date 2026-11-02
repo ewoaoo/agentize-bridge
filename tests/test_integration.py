@@ -66,7 +66,7 @@ def test_http_client_end_to_end(running_server):
     command_names = {command["name"] for command in commands}
 
     assert {"add", "get_state"} <= command_names
-    assert client.call_command("add", {"a": 2, "b": 3}) == 5
+    assert client.call_command("add", {"a": 2, "b": 3}, timeout=5) == 5
 
 
 def test_cli_end_to_end(running_server, monkeypatch, capsys):
@@ -103,7 +103,7 @@ def test_main_thread_command_runs_through_http(running_server):
 
     def call_command():
         try:
-            result["value"] = client.call_command("get_state", {})
+            result["value"] = client.call_command("get_state", {}, timeout=5)
         except Exception as exc:
             errors.append(exc)
 

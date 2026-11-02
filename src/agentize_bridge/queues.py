@@ -22,10 +22,7 @@ class CommandQueue:
         return future
 
     def get_nowait(self) -> CommandRequest:
-        try:
-            return self._queue.get_nowait()
-        except Empty:
-            raise
+        return self._queue.get_nowait()
 
     def task_done(self) -> None:
         self._queue.task_done()
