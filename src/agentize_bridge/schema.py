@@ -12,6 +12,9 @@ def build_args_model(fn: Callable[..., Any]) -> type[BaseModel]:
 
     fields: dict[str, Any] = {}
     for param in signature.parameters.values():
+        if param.name == "self":
+            continue
+
         if param.kind in (param.POSITIONAL_ONLY, param.VAR_POSITIONAL, param.VAR_KEYWORD):
             raise TypeError(f"指令参数 {param.name!r} 必须是一个具名关键字参数; 仅位置参数和 *args/**kwargs 不被支持")
         if param.name not in hints:

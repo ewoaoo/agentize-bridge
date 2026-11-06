@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 
 from agentize_bridge.command import create_command
+from agentize_bridge.container import Container
 from agentize_bridge.executor import (
     CommandArgumentsError,
     CommandExecutionError,
@@ -13,7 +14,23 @@ from agentize_bridge.executor import (
 
 @pytest.fixture
 def executor():
-    return CommandExecutor()
+    return CommandExecutor(Container())
+
+
+class DatabaseForExecutorTest:
+    def __init__(self, dsn: str):
+        self.dsn = dsn
+        self.connected = True
+
+    def query(self, sql: str) -> str:
+        if not self.connected:
+            raise RuntimeError("not connected")
+        return f"{self.dsn}: {sql}"
+
+class AsyncServiceForExecutorTest:
+    async def fetch(self, url: str) -> str:
+        await asyncio.sleep(0)
+        return f"data from {url}"
 
 
 # -------------------- 同步命令执行 --------------------
@@ -227,3 +244,20 @@ def test_execute_handles_sync_function_returning_awaitable(executor):
     result = executor.execute(command, {})
 
     assert result == 42
+
+
+# -------------------- Container 实例注入执行 --------------------
+
+def test_execute_injects_instance_method(executor):
+    executor.container.register("DatabaseForExecutorTest", DatabaseForExecutorTest("postgres://localhost"))
+    command = create_command(DatabaseForExecutorTest.query)
+    result = executor.execute(command, {"sql": "SELECT 1"})
+    assert result == "postgres://localhost: SELECT 1"
+
+
+def test_execute_injects_instance_method_via_async(executor):
+    executor.container.register("AsyncServiceForExecutorTest", AsyncServiceForExecutorTest())
+    command = create_command(AsyncServiceForExecutorTest.fetch, thread="worker")
+
+    result = executor.execute(command, {"url": "http://api.com"})
+    assert result == "data from http://api.com"

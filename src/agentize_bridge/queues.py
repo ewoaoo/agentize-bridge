@@ -1,5 +1,5 @@
 from concurrent.futures import Future
-from queue import Queue, Empty, Full
+from queue import Queue, Full
 from typing import Any
 
 from fastapi import HTTPException

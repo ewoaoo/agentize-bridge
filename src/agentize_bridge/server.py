@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import time
 
@@ -10,6 +11,7 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
+from .container import Container
 from .executor import CommandExecutor, CommandNotFoundError, CommandArgumentsError, CommandExecutionError
 from .queues import CommandQueue
 from .command import Command, ThreadMode, create_command, DEFAULT_TIMEOUT
@@ -24,8 +26,10 @@ class AgentizeServer:
 
     def __init__(self, name: str = "Agentize Bridge"):
         self.name = name
+        self.container = Container()
+
         self._commands: dict[str, Command] = {}
-        self._executor = CommandExecutor()
+        self._executor = CommandExecutor(self.container)
         self._queue = CommandQueue()
         self._workers = ThreadPoolExecutor(thread_name_prefix="agentize-worker")
 
@@ -166,13 +170,13 @@ class AgentizeServer:
             ]
 
         @app.post("/command/{name}")
-        def execute_command(
+        async def execute_command(
                 name: str,
                 arguments: dict[str, Any] = Body(...),
                 timeout: float | None = Query(default=None, gt=0)
         ) -> Any:
             try:
-                return self._dispatch(name, arguments, timeout=timeout)
+                return await self._dispatch(name, arguments, timeout=timeout)
             except ServerClosedError as exc:
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
             except CommandNotFoundError as exc:
@@ -184,7 +188,7 @@ class AgentizeServer:
             except TimeoutError as exc:
                 raise HTTPException(status_code=504, detail=f"command {name!r} timed out") from exc
 
-    def _dispatch(self, name: str, arguments: Mapping[str, Any], *, timeout: float | None = None) -> Any:
+    async def _dispatch(self, name: str, arguments: Mapping[str, Any], *, timeout: float | None = None) -> Any:
         with self._state_lock:
             if self._closed:
                 raise ServerClosedError("AgentizeServer 已经关闭")
@@ -198,9 +202,11 @@ class AgentizeServer:
                 future = self._workers.submit(self._executor.execute, command, args)
             else:
                 future = self._queue.submit(name, args)
+
+        effective_timeout = timeout if timeout is not None else command.timeout
+
         try:
-            effective_timeout = timeout if timeout is not None else command.timeout
-            return future.result(timeout=effective_timeout)
+            return await asyncio.wait_for(asyncio.wrap_future(future), timeout=effective_timeout)
         except TimeoutError:
             future.cancel()
             raise
