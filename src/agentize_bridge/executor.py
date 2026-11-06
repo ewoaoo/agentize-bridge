@@ -1,10 +1,13 @@
 import asyncio
 import inspect
-from typing import Any, Mapping
+from types import FunctionType
+from typing import Any, Mapping, cast
 
 from pydantic import ValidationError
 
 from .command import Command
+from .container import Container
+from .util import get_instance_class_name
 
 
 class CommandNotFoundError(LookupError):
@@ -20,6 +23,9 @@ class CommandExecutionError(RuntimeError):
 
 
 class CommandExecutor:
+    def __init__(self, container: Container):
+        self.container = container
+
     def execute(self, command: Command, arguments: Mapping[str, Any]) -> Any:
         if not isinstance(arguments, Mapping):
             raise CommandArgumentsError("指令参数必须是一个 JSON 对象")
@@ -33,8 +39,15 @@ class CommandExecutor:
         kwargs = {name: getattr(validated, name) for name in type(validated).model_fields}
 
         try:
-            result = command.fn(**kwargs)
-            if inspect.isawaitable(result):
+            fn = command.fn
+
+            class_name = get_instance_class_name(fn)
+            if class_name:
+                instance = self.container.resolve(class_name)
+                fn = cast(FunctionType, fn).__get__(instance)
+
+            result = fn(**kwargs)
+            if inspect.iscoroutine(result):
                 result = asyncio.run(result)
             return result
         except Exception as exc:

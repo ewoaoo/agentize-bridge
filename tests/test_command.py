@@ -6,6 +6,11 @@ import pytest
 from agentize_bridge.command import Command, DEFAULT_TIMEOUT, create_command
 
 
+class MyService:
+    def do_work(self, task_id: int, name: str = "default"):
+        pass
+
+
 # -------------------- Command 创建 --------------------
 
 def test_create_command_with_defaults():
@@ -346,3 +351,21 @@ def test_command_schema_is_independent_between_commands():
 
     assert list(command1.input_schema["properties"]) == ["value"]
     assert list(command2.input_schema["properties"]) == ["count"]
+
+
+# -------------------- 实例方法反射与 Schema 生成 --------------------
+
+def test_create_command_strips_self_from_instance_method_schema():
+    # 直接传入未绑定的类方法
+    command = create_command(MyService.do_work)
+
+    # 验证 schema 中只包含 task_id 和 name，没有 self
+    assert command.input_schema == {
+        "type": "object",
+        "properties": {
+            "task_id": {"type": "integer"},
+            "name": {"type": "string", "default": "default"},
+        },
+        "required": ["task_id"],
+        "additionalProperties": False,
+    }

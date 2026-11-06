@@ -1,3 +1,4 @@
+import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Thread, get_ident
@@ -22,6 +23,14 @@ def server():
 @pytest.fixture
 def client(server):
     return TestClient(server.fastapi_app, raise_server_exceptions=False)
+
+
+class GreeterForServerTest:
+    def __init__(self, prefix: str):
+        self.prefix = prefix
+
+    def greet(self, name: str) -> str:
+        return f"{self.prefix}, {name}"
 
 
 # -------------------- 命令注册 --------------------
@@ -120,7 +129,7 @@ def test_dispatch_worker_command_returns_result(server):
     def add(a: int, b: int):
         return a + b
 
-    result = server._dispatch("add", {"a": 2, "b": 3}, timeout=2)
+    result = asyncio.run(server._dispatch("add", {"a": 2, "b": 3}, timeout=2))
 
     assert result == 5
 
@@ -132,7 +141,7 @@ def test_worker_command_runs_in_worker_thread(server):
     def get_thread_id():
         return get_ident()
 
-    worker_thread_id = server._dispatch("get_thread_id", {}, timeout=2)
+    worker_thread_id = asyncio.run(server._dispatch("get_thread_id", {}, timeout=2))
 
     assert worker_thread_id != main_thread_id
 
@@ -143,7 +152,7 @@ def test_dispatch_worker_command_wraps_execution_error(server):
         raise ValueError("test failure")
 
     with pytest.raises(CommandExecutionError, match="test failure"):
-        server._dispatch("fail", {}, timeout=2)
+        asyncio.run(server._dispatch("fail", {}, timeout=2))
 
 
 # -------------------- main 命令调度 --------------------
@@ -153,13 +162,11 @@ def test_dispatch_main_command_waits_for_run_pending(server):
     def add(a: int, b: int):
         return a + b
 
+    def run_dispatch():
+        return asyncio.run(server._dispatch("add", {"a": 2, "b": 3}, timeout=2))
+
     with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(
-            server._dispatch,
-            "add",
-            {"a": 2, "b": 3},
-            timeout=2,
-        )
+        future = pool.submit(run_dispatch)
 
         deadline = time.monotonic() + 1
         while server._queue.qsize() == 0:
@@ -334,7 +341,7 @@ def test_dispatch_rejects_calls_after_close():
     server.close()
 
     with pytest.raises(ServerClosedError, match="已经关闭"):
-        server._dispatch("missing", {})
+        asyncio.run(server._dispatch("missing", {}))
 
 
 def test_run_pending_returns_zero_after_close():
@@ -402,7 +409,7 @@ def test_close_during_in_flight_dispatch_does_not_hang(server, monkeypatch):
 
     def dispatch():
         try:
-            server._dispatch("task", {}, timeout=2)
+            asyncio.run(server._dispatch("task", {}, timeout=2))
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 
@@ -437,3 +444,44 @@ def test_command_registration_does_not_start_http_server(server):
 
     assert server._http_server is None
     assert server._http_thread is None
+
+
+# -------------------- DI 容器集成 --------------------
+
+def test_http_execute_injected_command(server, client):
+    # 1. 向 Server 的容器注册实例（依赖类名）
+    server.container.register("GreeterForServerTest", GreeterForServerTest("Hello"))
+
+    # 2. 直接把未绑定的方法注册为指令
+    server.command(name="injected_greet")(GreeterForServerTest.greet)
+
+    # 3. 客户端无需感知 self
+    response = client.post("/command/injected_greet", json={"name": "Alice"})
+
+    assert response.status_code == 200
+    assert response.json() == "Hello, Alice"
+
+
+# -------------------- 异步命令调度边界 --------------------
+
+def test_http_execute_async_worker_command(server, client):
+    @server.command(thread="worker")
+    async def async_add(a: int, b: int):
+        import asyncio
+        await asyncio.sleep(0.01)
+        return a + b
+
+    response = client.post(
+        "/command/async_add",
+        json={"a": 10, "b": 20},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == 30
+
+
+def test_register_async_command_on_main_thread_rejected(server):
+    with pytest.raises(TypeError, match="异步命令不能使用 thread='main'"):
+        @server.command(thread="main")
+        async def invalid_async():
+            pass
