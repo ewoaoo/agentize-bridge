@@ -11,6 +11,7 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
+from . import __version__
 from .container import Container
 from .executor import CommandExecutor, CommandNotFoundError, CommandArgumentsError, CommandExecutionError
 from .queues import CommandQueue
@@ -33,7 +34,7 @@ class AgentizeServer:
         self._queue = CommandQueue()
         self._workers = ThreadPoolExecutor(thread_name_prefix="agentize-worker")
 
-        self.fastapi_app = FastAPI(title=self.name, version="0.1.1")
+        self.fastapi_app = FastAPI(title=self.name, version=__version__)
         self._http_server: uvicorn.Server | None = None
         self._http_thread: Thread | None = None
         self._closed = False
