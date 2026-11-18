@@ -8,6 +8,7 @@ import uvicorn
 
 from mcp import Client
 from agentize_bridge.server import AgentizeServer
+from agentize_bridge.registry import command, snapshot, clear
 from agentize_bridge.adapters.http_client import HttpClient
 from agentize_bridge.adapters.cli import run_cli
 from agentize_bridge.adapters import mcp_server as mcp_adapter
@@ -47,27 +48,29 @@ class AsyncWorker:
 
 @pytest.fixture
 def running_server():
+    clear()
     server = AgentizeServer(name="Integration Test")
 
     server.container.register("Calculator", Calculator(base=100))
-    server.command(name="add_base", thread="worker")(Calculator.add_base)
+    command(name="add_base", thread="worker")(Calculator.add_base)
 
-    server.command(name="static_m", thread="worker")(MethodTypeTester.static_m)
-    server.command(name="class_m", thread="worker")(MethodTypeTester.class_m)
+    command(name="static_m", thread="worker")(MethodTypeTester.static_m)
+    command(name="class_m", thread="worker")(MethodTypeTester.class_m)
 
     server.container.register("AsyncWorker", AsyncWorker("async_worker"))
-    server.command(name="async_process", thread="worker")(AsyncWorker.process)
+    command(name="async_process", thread="worker")(AsyncWorker.process)
 
-    @server.command(thread="worker")
+    @command(thread="worker")
     def add(a: int, b: int) -> int:
         """Add two numbers."""
         return a + b
 
-    @server.command(thread="main")
+    @command(thread="main")
     def get_state() -> dict:
         """Get application state."""
         return {"status": "ready"}
 
+    server._commands.update(snapshot())
     config = uvicorn.Config(
         server.fastapi_app,
         host="127.0.0.1",
@@ -95,6 +98,7 @@ def running_server():
         http_server.should_exit = True
         thread.join(timeout=5)
         server.close()
+        clear()
 
 
 def test_http_client_end_to_end(running_server):

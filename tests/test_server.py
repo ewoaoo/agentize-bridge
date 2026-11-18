@@ -11,6 +11,14 @@ from agentize_bridge.executor import (
     CommandExecutionError,
     CommandNotFoundError,
 )
+from agentize_bridge.registry import command, snapshot, clear
+
+
+@pytest.fixture(autouse=True)
+def clean_registry():
+    clear()
+    yield
+    clear()
 
 
 @pytest.fixture
@@ -36,55 +44,60 @@ class GreeterForServerTest:
 # -------------------- 命令注册 --------------------
 
 def test_register_command(server):
-    @server.command()
+    @command()
     def greet(name: str):
         return f"Hello, {name}"
+
+    server._commands.update(snapshot())
 
     assert "greet" in server._commands
     assert server._commands["greet"].fn is greet
 
 
 def test_register_command_with_custom_options(server):
-    @server.command(
+    @command(
         name="custom-greet",
         description="Custom greeting",
         thread="worker",
-        timeout=5.0,
+        timeout=5.0
     )
     def greet(name: str):
         return f"Hello, {name}"
 
-    command = server._commands["custom-greet"]
+    server._commands.update(snapshot())
+    cmd = server._commands["custom-greet"]
 
-    assert command.fn is greet
-    assert command.description == "Custom greeting"
-    assert command.thread == "worker"
-    assert command.timeout == 5.0
+    assert cmd.fn is greet
+    assert cmd.description == "Custom greeting"
+    assert cmd.thread == "worker"
+    assert cmd.timeout == 5.0
 
 
 def test_register_command_uses_docstring(server):
-    @server.command()
+    @command()
     def greet(name: str):
         """Greet someone."""
         return f"Hello, {name}"
+
+    server._commands.update(snapshot())
 
     assert server._commands["greet"].description == "Greet someone."
 
 
 def test_register_command_rejects_duplicate_name(server):
-    @server.command(name="duplicate")
+    @command(name="duplicate")
     def first():
         pass
 
     with pytest.raises(ValueError, match="已经被注册"):
-        @server.command(name="duplicate")
+        @command(name="duplicate")
         def second():
             pass
 
 
 def test_register_command_rejects_invalid_command(server):
     with pytest.raises(ValueError, match="无效的命令名称"):
-        @server.command(name="invalid name")
+        @command(name="invalid name")
         def process():
             pass
 
@@ -99,10 +112,11 @@ def test_health_endpoint(client):
 
 
 def test_list_commands_endpoint(server, client):
-    @server.command(description="Add two numbers")
+    @command(description="Add two numbers")
     def add(a: int, b: int):
         return a + b
 
+    server._commands.update(snapshot())
     response = client.get("/commands")
 
     assert response.status_code == 200
@@ -125,10 +139,11 @@ def test_list_commands_returns_empty_list(client):
 # -------------------- worker 命令执行 --------------------
 
 def test_dispatch_worker_command_returns_result(server):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def add(a: int, b: int):
         return a + b
 
+    server._commands.update(snapshot())
     result = asyncio.run(server._dispatch("add", {"a": 2, "b": 3}, timeout=2))
 
     assert result == 5
@@ -137,20 +152,22 @@ def test_dispatch_worker_command_returns_result(server):
 def test_worker_command_runs_in_worker_thread(server):
     main_thread_id = get_ident()
 
-    @server.command(thread="worker")
+    @command(thread="worker")
     def get_thread_id():
         return get_ident()
 
+    server._commands.update(snapshot())
     worker_thread_id = asyncio.run(server._dispatch("get_thread_id", {}, timeout=2))
 
     assert worker_thread_id != main_thread_id
 
 
 def test_dispatch_worker_command_wraps_execution_error(server):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def fail():
         raise ValueError("test failure")
 
+    server._commands.update(snapshot())
     with pytest.raises(CommandExecutionError, match="test failure"):
         asyncio.run(server._dispatch("fail", {}, timeout=2))
 
@@ -158,9 +175,11 @@ def test_dispatch_worker_command_wraps_execution_error(server):
 # -------------------- main 命令调度 --------------------
 
 def test_dispatch_main_command_waits_for_run_pending(server):
-    @server.command(thread="main")
+    @command(thread="main")
     def add(a: int, b: int):
         return a + b
+
+    server._commands.update(snapshot())
 
     def run_dispatch():
         return asyncio.run(server._dispatch("add", {"a": 2, "b": 3}, timeout=2))
@@ -183,9 +202,11 @@ def test_dispatch_main_command_waits_for_run_pending(server):
 
 
 def test_run_pending_respects_limit(server):
-    @server.command()
+    @command()
     def identity(value: int):
         return value
+
+    server._commands.update(snapshot())
 
     futures = [
         server._queue.submit("identity", {"value": value})
@@ -215,10 +236,11 @@ def test_run_pending_handles_unknown_command(server):
 
 
 def test_run_pending_handles_command_execution_error(server):
-    @server.command()
+    @command()
     def fail():
         raise ValueError("test failure")
 
+    server._commands.update(snapshot())
     future = server._queue.submit("fail", {})
 
     assert server.run_pending() == 1
@@ -228,10 +250,11 @@ def test_run_pending_handles_command_execution_error(server):
 
 
 def test_run_pending_preserves_result_order(server):
-    @server.command()
+    @command()
     def identity(value: int):
         return value
 
+    server._commands.update(snapshot())
     futures = [
         server._queue.submit("identity", {"value": value})
         for value in range(3)
@@ -244,10 +267,11 @@ def test_run_pending_preserves_result_order(server):
 # -------------------- HTTP 命令调用 --------------------
 
 def test_http_execute_worker_command(server, client):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def add(a: int, b: int):
         return a + b
 
+    server._commands.update(snapshot())
     response = client.post(
         "/command/add",
         json={"a": 2, "b": 3},
@@ -268,10 +292,11 @@ def test_http_execute_unknown_command(client):
 
 
 def test_http_execute_command_with_missing_argument(server, client):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def greet(name: str):
         return f"Hello, {name}"
 
+    server._commands.update(snapshot())
     response = client.post(
         "/command/greet",
         json={},
@@ -281,10 +306,11 @@ def test_http_execute_command_with_missing_argument(server, client):
 
 
 def test_http_execute_command_with_extra_argument(server, client):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def greet(name: str):
         return f"Hello, {name}"
 
+    server._commands.update(snapshot())
     response = client.post(
         "/command/greet",
         json={"name": "Alice", "extra": True},
@@ -294,7 +320,7 @@ def test_http_execute_command_with_extra_argument(server, client):
 
 
 def test_http_execute_command_with_invalid_body(server, client):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def greet(name: str):
         return f"Hello, {name}"
 
@@ -307,11 +333,12 @@ def test_http_execute_command_with_invalid_body(server, client):
 
 
 def test_http_execute_command_with_timeout(server, client):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def slow():
         time.sleep(0.1)
         return "done"
 
+    server._commands.update(snapshot())
     response = client.post(
         "/command/slow?timeout=0.01",
         json={},
@@ -322,7 +349,7 @@ def test_http_execute_command_with_timeout(server, client):
 
 
 def test_http_execute_command_rejects_nonpositive_timeout(server, client):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def process():
         return "done"
 
@@ -352,7 +379,7 @@ def test_run_pending_returns_zero_after_close():
 
 
 def test_run_pending_does_not_consume_requests_after_close(server):
-    @server.command()
+    @command()
     def task():
         return "done"
 
@@ -365,7 +392,7 @@ def test_run_pending_does_not_consume_requests_after_close(server):
 
 
 def test_close_fails_queued_main_request(server):
-    @server.command(thread="main")
+    @command(thread="main")
     def task():
         return "done"
 
@@ -377,7 +404,7 @@ def test_close_fails_queued_main_request(server):
 
 
 def test_http_returns_503_after_close(server, client):
-    @server.command(thread="worker")
+    @command(thread="worker")
     def ping():
         return "pong"
 
@@ -390,10 +417,11 @@ def test_http_returns_503_after_close(server, client):
 
 
 def test_close_during_in_flight_dispatch_does_not_hang(server, monkeypatch):
-    @server.command(thread="main")
+    @command(thread="main")
     def task():
         return "done"
 
+    server._commands.update(snapshot())
     entered = Event()
     release = Event()
     original_submit = server._queue.submit
@@ -438,7 +466,7 @@ def test_close_is_idempotent(server):
 
 
 def test_command_registration_does_not_start_http_server(server):
-    @server.command()
+    @command()
     def process():
         pass
 
@@ -453,7 +481,8 @@ def test_http_execute_injected_command(server, client):
     server.container.register("GreeterForServerTest", GreeterForServerTest("Hello"))
 
     # 2. 直接把未绑定的方法注册为指令
-    server.command(name="injected_greet")(GreeterForServerTest.greet)
+    command(name="injected_greet")(GreeterForServerTest.greet)
+    server._commands.update(snapshot())
 
     # 3. 客户端无需感知 self
     response = client.post("/command/injected_greet", json={"name": "Alice"})
@@ -465,12 +494,13 @@ def test_http_execute_injected_command(server, client):
 # -------------------- 异步命令调度边界 --------------------
 
 def test_http_execute_async_worker_command(server, client):
-    @server.command(thread="worker")
+    @command(thread="worker")
     async def async_add(a: int, b: int):
         import asyncio
         await asyncio.sleep(0.01)
         return a + b
 
+    server._commands.update(snapshot())
     response = client.post(
         "/command/async_add",
         json={"a": 10, "b": 20},
@@ -482,6 +512,6 @@ def test_http_execute_async_worker_command(server, client):
 
 def test_register_async_command_on_main_thread_rejected(server):
     with pytest.raises(TypeError, match="异步命令不能使用 thread='main'"):
-        @server.command(thread="main")
+        @command(thread="main")
         async def invalid_async():
             pass

@@ -21,6 +21,7 @@ uv build                               # 构建发行包
 ```mermaid
 flowchart TD
     server["server.py<br/>AgentizeServer"] --> command["command.py<br/>命令定义"]
+    server --> registry["registry.py<br/>命令注册"]
     server --> executor["executor.py<br/>执行与校验"]
     server --> queues["queues.py<br/>主线程队列"]
     command --> schema["schema.py<br/>参数模型 / Schema"]
@@ -31,8 +32,9 @@ flowchart TD
 | 模块 | 职责 |
 | --- | --- |
 | `server.py` | 对外入口 `AgentizeServer`，HTTP 服务与请求校验 |
-| `command.py` | 命令的定义与注册 |
+| `command.py` | 命令的数据模型与创建 |
 | `schema.py` | 从类型注解生成参数模型与 JSON Schema |
+| `registry.py`| 命令的注册  |
 | `executor.py` | 执行命令：线程、超时、实例绑定 |
 | `queues.py` | 主线程任务队列 |
 | `container.py` `util.py` | 实例容器，以及实例方法的识别 |

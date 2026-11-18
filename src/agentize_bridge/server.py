@@ -6,7 +6,7 @@ import uvicorn
 from concurrent.futures import CancelledError, ThreadPoolExecutor
 from queue import Empty
 from threading import Thread
-from typing import Any, Mapping
+from typing import Any, Mapping, Callable
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -16,6 +16,7 @@ from .container import Container
 from .executor import CommandExecutor, CommandNotFoundError, CommandArgumentsError, CommandExecutionError
 from .queues import CommandQueue
 from .command import Command, ThreadMode, create_command, DEFAULT_TIMEOUT
+from .registry import snapshot
 
 
 class ServerClosedError(RuntimeError):
@@ -41,28 +42,6 @@ class AgentizeServer:
         self._state_lock = threading.Lock()
 
         self._register_routes()
-
-    def command(
-            self,
-            name: str = "",
-            description: str = "",
-            thread: ThreadMode = "worker",
-            timeout: float = DEFAULT_TIMEOUT
-    ):
-        def register(func):
-            command = create_command(
-                func,
-                name=name,
-                description=description,
-                thread=thread,
-                timeout=timeout
-            )
-            if command.name in self._commands:
-                raise ValueError(f"指令 {command.name} 已经被注册")
-            self._commands[command.name] = command
-            return func
-
-        return register
 
     def run_pending(self, limit: int | None = None) -> int:
         """ 从队列中消费命令(应用内主线程循环挂载使用)；关闭后返回 0 """
@@ -101,6 +80,8 @@ class AgentizeServer:
                 raise RuntimeError("AgentizeServer 已关闭")
             if self._http_thread is not None:
                 raise RuntimeError("HTTP 服务已经启动")
+
+            self._commands.update(snapshot())
 
             # Host 和 Origin 校验
             self._install_local_guard(host=host, port=port)

@@ -25,7 +25,7 @@ flowchart LR
         http["HTTP 服务<br/>127.0.0.1:8765"]
         pool["线程池"]
         queue["主线程队列"]
-        fn["@server.command<br/>注册的函数"]
+        fn["@command<br/>注册的函数"]
         http -- "thread=worker" --> pool --> fn
         http -- "thread=main" --> queue -- "run_pending()" --> fn
     end
@@ -47,18 +47,17 @@ uv sync            # 或：pip install -e .
 ```python
 import time
 
-from agentize_bridge import AgentizeServer
-
-server = AgentizeServer("My App")
+from agentize_bridge import AgentizeServer, command
 
 
-@server.command()
+@command()
 def add(a: int, b: int = 2) -> int:
     """把两个数字相加。"""
     return a + b
 
 
 if __name__ == "__main__":
+    server = AgentizeServer("My App")
     server.start_http(host="127.0.0.1", port=8765)
     try:
         while True:

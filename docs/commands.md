@@ -7,7 +7,7 @@
 ## 装饰器参数
 
 ```python
-@server.command(name="", description="", thread="worker", timeout=30)
+@command(name="", description="", thread="worker", timeout=30)
 ```
 
 | 参数 | 默认值 | 说明 |
@@ -31,7 +31,7 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 
-@server.command(description="按类型创建若干对象")
+@command(description="按类型创建若干对象")
 def spawn(
     kind: Literal["cube", "sphere"],
     count: Annotated[int, Field(ge=1, le=100, description="创建数量")] = 1,

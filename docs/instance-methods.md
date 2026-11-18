@@ -6,7 +6,7 @@
 
 ## 用法
 
-在类中为方法添加 `@server.command()`，并将实例放入容器：
+在类中为方法添加 `@command()`，并将实例放入容器：
 
 ```python
 server = AgentizeServer("My App")
@@ -16,9 +16,9 @@ class Calculator:
     def __init__(self, base: int):
         self.base = base
 
-    @server.command()
+    @command()
     def add_base(self, value: int) -> int:
-        """在基础值上累加。"""
+        """ 在基础值上累加 """
         return self.base + value
 
 
@@ -35,7 +35,7 @@ curl -X POST http://127.0.0.1:8765/command/add_base \
 类来自第三方、无法添加装饰器时，可注册**未绑定**的方法，效果相同：
 
 ```python
-server.command()(Calculator.add_base)    # 不是 calculator.add_base
+command()(Calculator.add_base)    # 不是 calculator.add_base
 ```
 
 ## 时机

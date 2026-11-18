@@ -19,7 +19,7 @@ flowchart LR
         http["HTTP 服务"]
         pool["线程池"]
         queue["主线程队列"]
-        fn["@server.command<br/>注册的函数"]
+        fn["@command<br/>注册的函数"]
         http -- "thread=worker" --> pool --> fn
         http -- "thread=main" --> queue -- "run_pending()" --> fn
     end
@@ -42,7 +42,7 @@ flowchart LR
 
 | | 说明 |
 | --- | --- |
-| [**定义命令**](commands.md) | `@server.command` 的参数、类型校验与 JSON Schema |
+| [**定义命令**](commands.md) | `@command` 的参数、类型校验与 JSON Schema |
 | [**线程模型**](threading.md) | `worker` 与 `main` 的区别，主循环的接入方式 |
 | [**实例方法**](instance-methods.md) | 通过容器暴露已有对象的方法 |
 
