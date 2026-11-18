@@ -12,7 +12,7 @@ def command(
     def decorator(fn):
         cmd = create_command(fn, name=name, description=description, thread=thread, timeout=timeout)
         if cmd.name in _pending:
-            raise ValueError(f"指令 {cmd.name} 已经被注册")
+            raise ValueError(f"命令 {cmd.name} 已经被注册")
         _pending[cmd.name] = cmd
         return fn
 

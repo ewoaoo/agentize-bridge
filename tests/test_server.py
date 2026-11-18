@@ -231,7 +231,7 @@ def test_run_pending_handles_unknown_command(server):
 
     assert server.run_pending() == 1
 
-    with pytest.raises(CommandNotFoundError, match="找不到指令"):
+    with pytest.raises(CommandNotFoundError, match="找不到命令"):
         future.result()
 
 
@@ -288,7 +288,7 @@ def test_http_execute_unknown_command(client):
     )
 
     assert response.status_code == 404
-    assert "找不到指令" in response.json()["detail"]
+    assert "找不到命令" in response.json()["detail"]
 
 
 def test_http_execute_command_with_missing_argument(server, client):

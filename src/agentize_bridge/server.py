@@ -60,7 +60,7 @@ class AgentizeServer:
                     continue
                 command = self._commands.get(request.name)
                 if command is None:
-                    request.future.set_exception(CommandNotFoundError(f"找不到指令 {request.name}"))
+                    request.future.set_exception(CommandNotFoundError(f"找不到命令 {request.name}"))
                 else:
                     try:
                         result = self._executor.execute(command, request.arguments)
@@ -177,7 +177,7 @@ class AgentizeServer:
 
             command = self._commands.get(name)
             if command is None:
-                raise CommandNotFoundError(f"找不到指令 {name}")
+                raise CommandNotFoundError(f"找不到命令 {name}")
 
             args = dict(arguments or {})
             if command.thread == "worker":

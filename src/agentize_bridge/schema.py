@@ -16,7 +16,7 @@ def build_args_model(fn: Callable[..., Any]) -> type[BaseModel]:
             continue
 
         if param.kind in (param.POSITIONAL_ONLY, param.VAR_POSITIONAL, param.VAR_KEYWORD):
-            raise TypeError(f"指令参数 {param.name!r} 必须是一个具名关键字参数; 仅位置参数和 *args/**kwargs 不被支持")
+            raise TypeError(f"命令参数 {param.name!r} 必须是一个具名关键字参数; 仅位置参数和 *args/**kwargs 不被支持")
         if param.name not in hints:
             raise TypeError(f"参数 {param.name!r} 缺少类型注解（需要任意类型请显式标注 Any）")
         fields[param.name] = (hints[param.name], ... if param.default is param.empty else param.default)
