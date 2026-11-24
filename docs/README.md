@@ -36,7 +36,7 @@ flowchart LR
 
 | | 说明 |
 | --- | --- |
-| [**快速开始**](getting-started.md) | 安装、最小示例、服务的启动与关闭 |
+| [**快速开始**](getting-started.md) | 安装、最小示例、服务的启动与关闭、[访问日志配置](getting-started.md#访问日志) |
 
 ### 编写命令
 

@@ -74,6 +74,20 @@ with AgentizeServer("My App") as server:
     ...
 ```
 
+## 访问日志
+
+通过 `AgentizeServer` 的构造参数配置 `start_http()` 的访问日志。默认的 `log_mode="simple"` 在控制台显示 `4xx` 和 `5xx` 请求，`log_mode="full"` 显示全部访问记录。Uvicorn 的启停信息和底层诊断照常输出。
+
+```python
+with AgentizeServer("My App", log_mode="full", log_file="logs/access.log") as server:
+    server.start_http()
+    ...
+```
+
+`log_file` 是可选路径。设置后，两种控制台模式都会以 UTF-8 将完整访问记录追加到该文件。文件在应用启动时打开，退出时关闭。
+
+每条访问记录包含客户端地址、请求方法、路径、状态码和耗时。命令失败时，记录还会带上可用的业务错误详情。
+
 ---
 
 <div align="center">

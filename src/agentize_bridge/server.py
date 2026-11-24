@@ -4,6 +4,7 @@ import time
 
 import uvicorn
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+from os import PathLike
 from queue import Empty
 from threading import Thread
 from typing import Any, Mapping, Callable
@@ -14,19 +15,26 @@ from fastapi.responses import JSONResponse
 from . import __version__
 from .container import Container
 from .executor import CommandExecutor, CommandNotFoundError, CommandArgumentsError, CommandExecutionError
+from .access_log import AccessLogApp, LogMode
 from .queues import CommandQueue
 from .command import Command, ThreadMode, create_command, DEFAULT_TIMEOUT
 from .registry import snapshot
 
 
 class ServerClosedError(RuntimeError):
-    """服务已关闭：不再受理新请求，已排队的请求会被失败化。"""
+    """ 服务已关闭：不再受理新请求，已排队的请求会被失败化 """
 
 
 class AgentizeServer:
     """ 注册命令并通过共享的 HTTP/MCP 服务器公开它们 """
 
-    def __init__(self, name: str = "Agentize Bridge"):
+    def __init__(
+            self,
+            name: str = "Agentize Bridge",
+            *,
+            log_mode: LogMode = "simple",
+            log_file: str | PathLike[str] | None = None
+    ):
         self.name = name
         self.container = Container()
 
@@ -36,6 +44,7 @@ class AgentizeServer:
         self._workers = ThreadPoolExecutor(thread_name_prefix="agentize-worker")
 
         self.fastapi_app = FastAPI(title=self.name, version=__version__)
+        self._http_app = AccessLogApp(self.fastapi_app, mode=log_mode, file_path=log_file)
         self._http_server: uvicorn.Server | None = None
         self._http_thread: Thread | None = None
         self._closed = False
@@ -86,7 +95,7 @@ class AgentizeServer:
             # Host 和 Origin 校验
             self._install_local_guard(host=host, port=port)
 
-            config = uvicorn.Config(self.fastapi_app, host=host, port=port)
+            config = uvicorn.Config(self._http_app, host=host, port=port)
             self._http_server = uvicorn.Server(config)
             self._http_thread = threading.Thread(
                 target=self._http_server.run,

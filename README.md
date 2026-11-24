@@ -74,6 +74,8 @@ curl -X POST http://127.0.0.1:8765/command/add \
 agentize-bridge call add --args '{"a": 2, "b": 3}'                # 5
 ```
 
+控制台默认只显示失败请求的访问记录。设置 `AgentizeServer("My App", log_mode="full")` 可查看成功请求。文件输出配置见[访问日志](docs/getting-started.md#访问日志)。
+
 ## 文档
 
 [**完整文档 →**](docs/README.md) 位于仓库的 `docs/` 目录，下面是常用入口：

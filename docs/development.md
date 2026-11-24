@@ -10,6 +10,7 @@
 uv sync                                # 安装依赖（含测试与构建工具）
 uv run pytest                          # 运行测试
 uv run pytest --cov=agentize_bridge    # 同时统计覆盖率
+uv run pytest tests/test_access_log.py # 单独运行访问日志测试，无需绑定端口
 uv run python examples/app.py          # 启动示例应用
 uv build                               # 构建发行包
 ```
@@ -24,6 +25,7 @@ flowchart TD
     server --> registry["registry.py<br/>命令注册"]
     server --> executor["executor.py<br/>执行与校验"]
     server --> queues["queues.py<br/>主线程队列"]
+    server --> access_log["access_log.py<br/>HTTP 访问日志"]
     command --> schema["schema.py<br/>参数模型 / Schema"]
     executor --> container["container.py<br/>实例容器"]
     executor --> util["util.py<br/>实例方法识别"]
@@ -32,6 +34,7 @@ flowchart TD
 | 模块 | 职责 |
 | --- | --- |
 | `server.py` | 对外入口 `AgentizeServer`，HTTP 服务与请求校验 |
+| `access_log.py` | 包装 HTTP 的 ASGI 入口并输出访问日志，路由和请求处理由原 FastAPI 应用负责 |
 | `command.py` | 命令的数据模型与创建 |
 | `schema.py` | 从类型注解生成参数模型与 JSON Schema |
 | `registry.py`| 命令的注册  |
