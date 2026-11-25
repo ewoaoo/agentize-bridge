@@ -70,7 +70,14 @@ class AccessLogApp:
             finally:
                 self._replacing_access.reset(token)
 
-            self._write_access(logger, scope, message["status"], elapsed_ms)
+            try:
+                self._write_access(logger, scope, message["status"], elapsed_ms)
+            except Exception:
+                try:
+                    logging.getLogger(__name__).exception("HTTP 访问日志记录失败")
+                except Exception:
+                    # 即使宿主的诊断输出失败，也要继续发送响应体。
+                    pass
 
         await self._app(scope, receive, send_response)
 

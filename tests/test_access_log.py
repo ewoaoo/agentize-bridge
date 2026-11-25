@@ -92,6 +92,40 @@ def test_command_access_log_shows_original_execution_error(capsys):
     assert line.endswith(" | PermissionError: cannot write output")
 
 
+@pytest.mark.parametrize("diagnostic_fails", [False, True])
+def test_access_log_failure_keeps_response_intact(diagnostic_fails, caplog, monkeypatch):
+    app = FastAPI()
+    failure = RuntimeError("access log formatter failed")
+    diagnostic_logger = logging.getLogger("agentize_bridge.access_log")
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}
+
+    def fail_access_log(*_args):
+        raise failure
+
+    monkeypatch.setattr(AccessLogApp, "_write_access", staticmethod(fail_access_log))
+
+    if diagnostic_fails:
+        def fail_diagnostic(*_args):
+            raise OSError("diagnostic output unavailable")
+
+        monkeypatch.setattr(diagnostic_logger, "exception", fail_diagnostic)
+
+    with caplog.at_level(logging.ERROR, logger=diagnostic_logger.name):
+        with TestClient(AccessLogApp(app, mode="full")) as client:
+            response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    if not diagnostic_fails:
+        record, = [record for record in caplog.records if record.name == diagnostic_logger.name]
+        assert record.getMessage() == "HTTP 访问日志记录失败"
+        assert record.exc_info[1] is failure
+        assert record.exc_info[2] is not None
+
+
 def test_replaces_native_access_only_for_wrapped_responses(caplog, capsys, monkeypatch):
     native_access = logging.getLogger("uvicorn.access")
     monkeypatch.setattr(native_access, "handlers", [])
