@@ -97,7 +97,7 @@ def test_execute_rejects_non_mapping_arguments(executor, arguments):
 
     command = create_command(process)
 
-    with pytest.raises(CommandArgumentsError, match="指令参数必须是一个 JSON 对象"):
+    with pytest.raises(CommandArgumentsError, match="命令参数必须是一个 JSON 对象"):
         executor.execute(command, arguments)
 
 
@@ -165,7 +165,7 @@ def test_execute_wraps_command_exception(executor):
 
     with pytest.raises(
             CommandExecutionError,
-            match="指令 'process' 运行失败: invalid value",
+            match="命令 'process' 运行失败: invalid value",
     ) as exc_info:
         executor.execute(command, {})
 
@@ -225,7 +225,7 @@ def test_execute_wraps_async_command_exception(executor):
 
     with pytest.raises(
             CommandExecutionError,
-            match="指令 'process' 运行失败: async failure",
+            match="命令 'process' 运行失败: async failure",
     ) as exc_info:
         executor.execute(command, {})
 

@@ -4,27 +4,37 @@ import time
 
 import uvicorn
 from concurrent.futures import CancelledError, ThreadPoolExecutor
+from os import PathLike
 from queue import Empty
 from threading import Thread
-from typing import Any, Mapping
+from typing import Any, Mapping, Callable
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
+from . import __version__
 from .container import Container
 from .executor import CommandExecutor, CommandNotFoundError, CommandArgumentsError, CommandExecutionError
+from .access_log import AccessLogApp, LogMode
 from .queues import CommandQueue
 from .command import Command, ThreadMode, create_command, DEFAULT_TIMEOUT
+from .registry import snapshot
 
 
 class ServerClosedError(RuntimeError):
-    """服务已关闭：不再受理新请求，已排队的请求会被失败化。"""
+    """ 服务已关闭：不再受理新请求，已排队的请求会被失败化 """
 
 
 class AgentizeServer:
     """ 注册命令并通过共享的 HTTP/MCP 服务器公开它们 """
 
-    def __init__(self, name: str = "Agentize Bridge"):
+    def __init__(
+            self,
+            name: str = "Agentize Bridge",
+            *,
+            log_mode: LogMode = "simple",
+            log_file: str | PathLike[str] | None = None
+    ):
         self.name = name
         self.container = Container()
 
@@ -33,35 +43,14 @@ class AgentizeServer:
         self._queue = CommandQueue()
         self._workers = ThreadPoolExecutor(thread_name_prefix="agentize-worker")
 
-        self.fastapi_app = FastAPI(title=self.name, version="0.1.1")
+        self.fastapi_app = FastAPI(title=self.name, version=__version__)
+        self._http_app = AccessLogApp(self.fastapi_app, mode=log_mode, file_path=log_file)
         self._http_server: uvicorn.Server | None = None
         self._http_thread: Thread | None = None
         self._closed = False
         self._state_lock = threading.Lock()
 
         self._register_routes()
-
-    def command(
-            self,
-            name: str = "",
-            description: str = "",
-            thread: ThreadMode = "worker",
-            timeout: float = DEFAULT_TIMEOUT
-    ):
-        def register(func):
-            command = create_command(
-                func,
-                name=name,
-                description=description,
-                thread=thread,
-                timeout=timeout
-            )
-            if command.name in self._commands:
-                raise ValueError(f"指令 {command.name} 已经被注册")
-            self._commands[command.name] = command
-            return func
-
-        return register
 
     def run_pending(self, limit: int | None = None) -> int:
         """ 从队列中消费命令(应用内主线程循环挂载使用)；关闭后返回 0 """
@@ -80,7 +69,7 @@ class AgentizeServer:
                     continue
                 command = self._commands.get(request.name)
                 if command is None:
-                    request.future.set_exception(CommandNotFoundError(f"找不到指令 {request.name}"))
+                    request.future.set_exception(CommandNotFoundError(f"找不到命令 {request.name}"))
                 else:
                     try:
                         result = self._executor.execute(command, request.arguments)
@@ -101,10 +90,12 @@ class AgentizeServer:
             if self._http_thread is not None:
                 raise RuntimeError("HTTP 服务已经启动")
 
+            self._commands.update(snapshot())
+
             # Host 和 Origin 校验
             self._install_local_guard(host=host, port=port)
 
-            config = uvicorn.Config(self.fastapi_app, host=host, port=port)
+            config = uvicorn.Config(self._http_app, host=host, port=port)
             self._http_server = uvicorn.Server(config)
             self._http_thread = threading.Thread(
                 target=self._http_server.run,
@@ -195,7 +186,7 @@ class AgentizeServer:
 
             command = self._commands.get(name)
             if command is None:
-                raise CommandNotFoundError(f"找不到指令 {name}")
+                raise CommandNotFoundError(f"找不到命令 {name}")
 
             args = dict(arguments or {})
             if command.thread == "worker":

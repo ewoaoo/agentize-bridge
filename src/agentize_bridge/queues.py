@@ -18,7 +18,7 @@ class CommandQueue:
         try:
             self._queue.put_nowait(CommandRequest(name, arguments, future))
         except Full as exc:
-            raise HTTPException(status_code=503, detail="指令队列已满") from exc
+            raise HTTPException(status_code=503, detail="命令队列已满") from exc
         return future
 
     def get_nowait(self) -> CommandRequest:

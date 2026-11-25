@@ -5,6 +5,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from agentize_bridge.registry import command, snapshot, clear
 from agentize_bridge.server import AgentizeServer
 
 HOST = "127.0.0.1"
@@ -14,17 +15,20 @@ DEFAULT_BASE_URL = f"http://{HOST}:{PORT}"
 
 @pytest.fixture
 def guarded():
+    clear()
     server = AgentizeServer()
     calls = []
 
-    @server.command()
+    @command(name="ping")
     def ping() -> str:
         calls.append(1)
         return "pong"
 
+    server._commands.update(snapshot())
     server._install_local_guard(HOST, PORT)
     yield server, calls
     server.close()
+    clear()
 
 
 def make_client(server, base_url=DEFAULT_BASE_URL):
